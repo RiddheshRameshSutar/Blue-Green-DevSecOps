@@ -1,0 +1,36 @@
+# AWS Configuration
+aws_region     = "ap-south-1"
+aws_account_id = "792840215332"
+
+# Project Configuration
+project_name = "blue-green-devsecops"
+environment  = "production"
+
+# Network Configuration
+vpc_cidr             = "10.0.0.0/16"
+availability_zones   = ["ap-south-1a", "ap-south-1b"]
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+
+# EC2 Configuration
+instance_type           = "t3.medium"
+sonarqube_instance_type = "t3.medium"
+key_name                = "blue-green-key"  # IMPORTANT: Create this key pair in AWS first
+
+# GitHub Configuration
+github_repo   = "RiddheshRameshSutar/Blue-Green-DevSecOps"
+github_branch = "main"
+
+# Docker Configuration
+docker_registry_url = "docker.io"
+docker_username     = "your-dockerhub-username"  # Replace with your Docker Hub username
+docker_password     = "your-dockerhub-password"  # Replace with your Docker Hub password
+
+# SonarQube Configuration
+sonar_token = ""  # Leave empty initially, will be generated after SonarQube setup
+
+# Notification Configuration
+notification_email = "modveyash@gmail.com"
+
+# S3 Configuration
+s3_bucket_name = "blue-green-codebuild-artifacts"
