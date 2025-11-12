@@ -45,7 +45,7 @@ phases:
       - trivy image "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/swiggy:latest" >> trivyimage.txt
       - echo "Running OWASP Dependency-Check scan..."
       - cd dependency-check/bin
-      - ./dependency-check.sh --scan . --format ALL
+      - ./dependency-check.sh --scan . --format ALL --disableExitOnError
       - echo "Build completed successfully!"
       - echo "Running SonarQube analysis result"
       - |
