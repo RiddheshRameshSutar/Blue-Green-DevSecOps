@@ -40,7 +40,7 @@ phases:
     commands:
       - echo "Performing Trivy image scan after building the image..."
       - aws ses send-email --from "madithati123@gmail.com" --to "madithatisreedhar123@gmail.com" --subject "CodeBuild Status: $CODEBUILD_BUILD_ID" --text "Build status: $CODEBUILD_BUILD_STATUS" --region "ap-south-1" 
-
+      
       - trivy image  "$DOCKER_REGISTRY_USERNAME/swiggy:latest" >> trivyimage.txt
       - echo "Running OWASP Dependency-Check scan..."
       - cd dependency-check/bin
@@ -50,10 +50,7 @@ phases:
       - sonar-scanner -Dsonar.projectKey=swiggy -Dsonar.sources=. -Dsonar.host.url=http://13.204.62.114/:9000/
       - aws ses send-email --from "modveyash@gmail.com" --to "riddheshrameshsutar@gmail.com" --subject "CodeBuild Status: $CODEBUILD_BUILD_ID" --text "Build status: $CODEBUILD_BUILD_STATUS" --region "ap-south-1" 
       # Update with your preferred AWS region
-
-post_build:
-  commands:
-    - aws ses send-email \
+      - aws ses send-email \
         --from "modveyash@gmail.com" \
         --to "riddheshrameshsutar@gmail.com" \
         --subject "CodeBuild Status: $CODEBUILD_BUILD_ID" \
