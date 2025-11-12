@@ -53,7 +53,8 @@ phases:
           -Dsonar.projectKey=swiggy \
           -Dsonar.sources=. \
           -Dsonar.host.url="http://13.204.62.114:9000/"
-      - aws ses send-email \
+      - >
+        aws ses send-email \
           --from "modveyash@gmail.com" \
           --to "riddheshrameshsutar@gmail.com" \
           --subject "CodeBuild Status: $CODEBUILD_BUILD_ID" \
