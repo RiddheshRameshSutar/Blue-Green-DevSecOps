@@ -40,48 +40,48 @@ phases:
       - docker push "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/swiggy:latest"
 
   post_build:
-  commands:
-    - echo "Performing Trivy image scan after building the image..."
-    - trivy image "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/swiggy:latest" >> trivyimage.txt
+    commands:
+      - echo "Performing Trivy image scan after building the image..."
+      - trivy image "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/swiggy:latest" >> trivyimage.txt
 
-    - echo "Running OWASP Dependency-Check scan..."
-    - cd dependency-check/bin
-    - mkdir -p ../../dependency-check-report
-    - ./dependency-check.sh --scan . --format ALL --out ../../dependency-check-report --nvdApiKey "fa54f246-7244-4137-9259-4b7c64bd53ff" || true
-    - cd ../../
+      - echo "Running OWASP Dependency-Check scan..."
+      - cd dependency-check/bin
+      - mkdir -p ../../dependency-check-report
+      - ./dependency-check.sh --scan . --format ALL --out ../../dependency-check-report --nvdApiKey "fa54f246-7244-4137-9259-4b7c64bd53ff" || true
+      - cd ../../
 
-    - echo "Uploading Dependency Check reports to S3..."
-    - |
-      if [ -d "./dependency-check-report" ]; then
-        aws s3 cp ./dependency-check-report s3://blue-green-codebuild/ --recursive
-      else
-        echo "No dependency-check-report directory found, skipping upload."
-      fi
+      - echo "Uploading Dependency Check reports to S3..."
+      - |
+        if [ -d "./dependency-check-report" ]; then
+          aws s3 cp ./dependency-check-report s3://blue-green-codebuild/ --recursive
+        else
+          echo "No dependency-check-report directory found, skipping upload."
+        fi
 
-    - echo "Uploading Trivy scan reports to S3..."
-    - |
-      if [ -f "./trivyfilescan.txt" ]; then
-        aws s3 cp ./trivyfilescan.txt s3://blue-green-codebuild/trivyfilescan.txt
-      fi
-      if [ -f "./trivyimage.txt" ]; then
-        aws s3 cp ./trivyimage.txt s3://blue-green-codebuild/trivyimage.txt
-      fi
+      - echo "Uploading Trivy scan reports to S3..."
+      - |
+        if [ -f "./trivyfilescan.txt" ]; then
+          aws s3 cp ./trivyfilescan.txt s3://blue-green-codebuild/trivyfilescan.txt
+        fi
+        if [ -f "./trivyimage.txt" ]; then
+          aws s3 cp ./trivyimage.txt s3://blue-green-codebuild/trivyimage.txt
+        fi
 
-    - echo "Build completed successfully!"
-    - echo "Running SonarQube analysis result"
-    - |
-      sonar-scanner \
-        -Dsonar.projectKey=swiggy \
-        -Dsonar.sources=. \
-        -Dsonar.host.url="http://13.204.62.114:9000/"
+      - echo "Build completed successfully!"
+      - echo "Running SonarQube analysis result"
+      - |
+        sonar-scanner \
+          -Dsonar.projectKey=swiggy \
+          -Dsonar.sources=. \
+          -Dsonar.host.url="http://13.204.62.114:9000/"
 
-    - >
-      aws ses send-email \
-        --from "modveyash@gmail.com" \
-        --to "modveyash@gmail.com" \
-        --subject "CodeBuild Status: $CODEBUILD_BUILD_ID" \
-        --text "Build status: $CODEBUILD_BUILD_STATUS" \
-        --region "ap-south-1"
+      - >
+        aws ses send-email \
+          --from "modveyash@gmail.com" \
+          --to "modveyash@gmail.com" \
+          --subject "CodeBuild Status: $CODEBUILD_BUILD_ID" \
+          --text "Build status: $CODEBUILD_BUILD_STATUS" \
+          --region "ap-south-1"
 
 artifacts:
   files:
