@@ -4,38 +4,54 @@ env:
   variables:
     CONTAINER_NAME: "frontend"
     ECR_REPO_NAME: "swiggy-clone-frontend"
-    TASK_FAMILY: "swiggy-clone-frontend"
+    ARTIFACT_BUCKET: "swiggy-clone-artifacts-${ACCOUNT_ID:-792840215332}"
 
 phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      java: corretto17
+
   pre_build:
     commands:
-      - echo Logging into Amazon ECR...
+      - echo "Pre-build: detect account & region"
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - echo "ACCOUNT_ID=$ACCOUNT_ID"
+      - REGION=${AWS_REGION:-$(aws configure get region)}
+      - echo "REGION=$REGION"
+      - echo "Logging into Amazon ECR..."
       - aws --version
-      - $(aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com)
+      - aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - echo "IMAGE_TAG=$IMAGE_TAG"
 
   build:
     commands:
-      - echo Building Docker image...
-      - docker build -t $ECR_REPO_NAME:$IMAGE_TAG .
-      - docker tag $ECR_REPO_NAME:$IMAGE_TAG ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG
+      - echo "Building Docker image..."
+      - docker build -t ${ECR_REPO_NAME}:${IMAGE_TAG} .
+      - docker tag ${ECR_REPO_NAME}:${IMAGE_TAG} ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}
 
   post_build:
     commands:
-      - echo Pushing image to ECR...
-      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG
+      - echo "Pushing image to ECR..."
+      - docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}
 
-      - echo Creating imagedefinitions.json...
-      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG > imagedefinitions.json
+      - echo "Writing imagedefinitions.json (for reference)..."
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG} > imagedefinitions.json
 
-      - echo Creating taskdef.json from template...
-      - sed "s|<IMAGE_URI>|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}|g" taskdef-template.json > taskdef.json
+      - echo "Creating taskdef.json from template..."
+      - sed "s|<IMAGE_URI>|${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}|g" taskdef-template.json > taskdef.json
 
-      - echo Running Trivy image scan \(non-fatal\)...
-      - trivy image ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG} > trivyimage.txt || true
+      - echo "Running Trivy image scan (non-fatal)..."
+      - |
+        if command -v trivy >/dev/null 2>&1; then
+          trivy image ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG} > trivyimage.txt || true
+        else
+          echo "Trivy not found — skipping trivy image scan"
+        fi
 
-      - echo Running OWASP Dependency Check \(non-fatal\)...
+      - echo "Running OWASP Dependency-Check (non-fatal) if present..."
       - |
         if [ -d "./dependency-check/bin" ]; then
           cd dependency-check/bin
@@ -43,23 +59,33 @@ phases:
           ./dependency-check.sh --scan ../../ -f ALL --out ../../dependency-check-report || true
           cd ../../
         else
-          echo "dependency-check not found, skipping"
+          echo "dependency-check not present — skipping"
         fi
 
-      - echo Uploading scan reports to S3...
-      - aws s3 cp trivyimage.txt s3://$ARTIFACT_BUCKET/trivyimage.txt || true
+      - echo "Uploading scan reports to S3 (if present)..."
+      - |
+        if [ -f "./trivyimage.txt" ]; then
+          aws s3 cp ./trivyimage.txt s3://${ARTIFACT_BUCKET}/trivyimage-${IMAGE_TAG}.txt || true
+        fi
       - |
         if [ -d "./dependency-check-report" ]; then
-          aws s3 cp ./dependency-check-report s3://$ARTIFACT_BUCKET/ --recursive || true
+          aws s3 cp ./dependency-check-report s3://${ARTIFACT_BUCKET}/dependency-check-reports-${IMAGE_TAG}/ --recursive || true
         fi
 
-      - echo "Running SonarQube scan \(optional\)..."
+      - echo "Optional SonarQube scan (only if SONAR_HOST_URL set and reachable)..."
       - |
-        if [ -n "$SONAR_HOST_URL" ] && curl -sSf $SONAR_HOST_URL >/dev/null 2>&1; then
-          sonar-scanner -Dsonar.projectKey=swiggy -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN || true
+        if [ -n "$SONAR_HOST_URL" ] && [ -n "$SONAR_TOKEN" ]; then
+          if curl -sSf "$SONAR_HOST_URL" >/dev/null 2>&1; then
+            echo "Sonar host reachable — running sonar-scanner"
+            sonar-scanner -Dsonar.projectKey=swiggy -Dsonar.sources=. -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.login="$SONAR_TOKEN" || true
+          else
+            echo "Sonar host at $SONAR_HOST_URL is unreachable — skipping Sonar"
+          fi
         else
-          echo "Skipping SonarQube scan (server unreachable or config missing)"
+          echo "SONAR_HOST_URL or SONAR_TOKEN not set — skipping Sonar"
         fi
+
+      - echo "POST_BUILD finished — continuing even if scans reported issues."
 
 artifacts:
   files:
